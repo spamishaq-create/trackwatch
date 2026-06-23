@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Track Watch">
+<title>Track Watch</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#070d18;--s:rgba(255,255,255,.05);--b:rgba(79,172,254,.15);--a:#4facfe;--t:#e8f0fe;--m:rgba(255,255,255,.4)}
+html,body{background:var(--bg);color:var(--t);font-family:'Nunito',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none;min-height:100vh}
+#app{max-width:440px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes ring{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.8);opacity:0}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes dpulse{0%,100%{box-shadow:0 0 0 0 rgba(255,82,82,0)}60%{box-shadow:0 0 0 12px rgba(255,82,82,.1)}}
+@keyframes rflash{0%,100%{background:rgba(255,82,82,.08)}50%{background:rgba(255,82,82,.2)}}
+@keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;border:none;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;padding:14px;width:100%;transition:transform .15s;-webkit-tap-highlight-color:transparent;user-select:none}
+.btn:active{transform:scale(.95)}
+.sm{border:none;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;padding:7px 14px;transition:transform .15s;-webkit-tap-highlight-color:transparent}
+.sm:active{transform:scale(.93)}
+.card{border-radius:20px;padding:15px 17px;background:var(--s);border:1px solid var(--b)}
+.lbl{font-size:10px;font-weight:700;color:var(--m);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px}
+.spin{border:2.5px solid rgba(79,172,254,.2);border-top-color:#4facfe;border-radius:50%;animation:spin .75s linear infinite;flex-shrink:0}
+#tabs{display:flex;gap:4px;padding:0 16px 12px;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
+#tabs::-webkit-scrollbar{display:none}
+.tab{flex-shrink:0;display:flex;gap:5px;align-items:center;padding:9px 13px;font-size:11px;border:none;border-radius:50px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:700;background:var(--s);color:var(--m);transition:all .18s;-webkit-tap-highlight-color:transparent}
+.tab:active{transform:scale(.94)}
+/* TOS — fixed height so scroll never reflows layout */
+#tos{flex:1;margin:0 18px;background:var(--s);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:16px 18px;overflow-y:auto;font-size:12px;line-height:1.85;color:rgba(255,255,255,.7);font-weight:500;height:calc(100vh - 290px);max-height:420px}
+#tos::-webkit-scrollbar{width:3px}
+#tos::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:3px}
+/* Canvas always in DOM, just hidden when not on radar tab */
+#cvs{border-radius:50%;display:block;margin:0 auto}
+.train-row{border-radius:18px;padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:7px}
+.prog{height:4px;border-radius:50px;background:rgba(255,255,255,.08);overflow:hidden;margin:4px 0}
+.pf{height:100%;border-radius:50px}
+input,textarea{font-family:'Nunito',sans-serif;outline:none;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 13px;color:#fff;font-size:13px}
+textarea{resize:none;line-height:1.5}
+#cta-wrap{position:sticky;bottom:0;padding:12px 18px;background:linear-gradient(to top,rgba(7,13,24,.98) 60%,transparent);flex-shrink:0}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<!-- Canvas lives here permanently — NEVER inside #app so renders can't touch it -->
+<canvas id="cvs" width="310" height="310" style="display:none"></canvas>
+
+<script>
+const LC={"1":"#EE352E","2":"#EE352E","3":"#EE352E","4":"#00933C","5":"#00933C","6":"#00933C","7":"#B933AD","A":"#0039A6","C":"#0039A6","E":"#0039A6","B":"#FF6319","D":"#FF6319","F":"#FF6319","M":"#FF6319","G":"#6CBE45","J":"#996633","Z":"#996633","L":"#A7A9AC","N":"#FCCC0A","Q":"#FCCC0A","R":"#FCCC0A","W":"#FCCC0A","S":"#808183","FS":"#808183","H":"#808183","SI":"#0039A6"};
+const LINES=["1","2","3","4","5","6","7","A","C","E","B","D","F","M","G","J","Z","L","N","Q","R","W","S","H","FS","SI"];
+const NYC={lat:40.7549,lon:-73.984};
+
+function hav(a,b,c,d){const R=6371000,dL=(c-a)*Math.PI/180,dO=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dO/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function brng(a,b,c,d){const dL=(d-b)*Math.PI/180,a1=a*Math.PI/180,a2=c*Math.PI/180;return((Math.atan2(Math.sin(dL)*Math.cos(a2),Math.cos(a1)*Math.sin(a2)-Math.sin(a1)*Math.cos(a2)*Math.cos(dL))*180/Math.PI)+360)%360;}
+function card(d){return d==null?"":[" ↑N","↗NE","→E","↘SE","↓S","↙SW","←W","↖NW"][Math.round(d/45)%8]}
+function hdg(t){if(t.direction==="N")return"↑ North";if(t.direction==="S")return"↓ South";if(t.bearing==null)return"";const b=((t.bearing%360)+360)%360;if(b>315||b<=45)return"↑ North";if(b>45&&b<=135)return"→ East";if(b>135&&b<=225)return"↓ South";return"← West";}
+function $id(id){return document.getElementById(id)}
+
+/* Stable orbits */
+const ORBITS=LINES.map((line,i)=>({line,a0:(i/LINES.length)*2*Math.PI,r:250+((i*173)%600),w:0.00065+((i*41)%20)*0.000015,dir:i%2===0?"N":"S",spd:6+((i*7)%5)}));
+function makeSim(uLat,uLon,now){
+  return ORBITS.map(o=>{
+    const angle=o.a0+(now/1000)*o.w;
+    const lat=uLat+(Math.cos(angle)*o.r)/111320;
+    const lon=uLon+(Math.sin(angle)*o.r)/(111320*Math.cos(uLat*Math.PI/180));
+    const b=((angle*180/Math.PI)+90+360)%360;
+    const dist=hav(uLat,uLon,lat,lon);
+    return{id:"s"+o.line,line:o.line,lat,lon,bearing:b,speed:o.spd,distanceToUser:dist,eta:Math.round(dist/o.spd),direction:o.dir,simulated:true,bearingFromUser:brng(uLat,uLon,lat,lon)};
+  });
+}
+
+/* ── State ── */
+const S={
+  screen:"legal",tab:"radar",
+  loc:null,locStatus:"idle",
+  trains:[],alerts:[],danger:false,
+  tracking:false,liveMode:false,fetching:false,lastFetch:null,
+  alertDist:200,alertTime:30,notifOK:false,log:[],
+  tosScrolled:false,tosChecked:false,
+  dmsArmed:false,dmsCountdown:30,dmsInterval:30,dmsTriggered:false,
+  crew:[],crewOk:{},
+  notes:function(){try{return JSON.parse(localStorage.getItem("tw_notes")||"[]")}catch{return[]}}(),
+  noteTag:"hazard",
+  aiMsgs:[{role:"assistant",content:"Hey — I'm your Track Watch AI. I know your real-time location and nearby train activity. Ask anything: route planning, safety windows, gear, or what you're planning tonight."}],
+  aiLoading:false,
+};
+
+/* ═══════════════════════════════════════
+   RADAR — canvas lives OUTSIDE #app
+   RAF loop runs forever independently
+═══════════════════════════════════════ */
+const CVS=$id("cvs");
+const CTX=CVS.getContext("2d");
+let sweep=0;
+
+// Shared data object — written by sim loop, read by RAF
+const LIVE={trains:[],uLat:NYC.lat,uLon:NYC.lon,alertDist:200,danger:false};
+
+function radarDraw(){
+  const W=CVS.width,H=CVS.height,cx=W/2,cy=H/2;
+  const {trains,uLat,uLon,alertDist,danger}=LIVE;
+  let maxD=Math.max(alertDist*1.8,350);
+  trains.forEach(t=>{if(t.distanceToUser>maxD)maxD=t.distanceToUser;});
+  const R=cx-14,scale=R/maxD;
+
+  const bg=CTX.createRadialGradient(cx,cy,0,cx,cy,cx);
+  bg.addColorStop(0,danger?"rgba(26,4,4,.97)":"rgba(5,13,28,.97)");
+  bg.addColorStop(1,danger?"rgba(10,2,2,1)":"rgba(2,7,17,1)");
+  CTX.fillStyle=bg;CTX.beginPath();CTX.arc(cx,cy,cx,0,Math.PI*2);CTX.fill();
+
+  [.25,.5,.75,1].forEach(f=>{
+    CTX.beginPath();CTX.arc(cx,cy,f*R,0,Math.PI*2);
+    CTX.strokeStyle=danger?"rgba(255,60,60,.12)":"rgba(79,172,254,.1)";CTX.lineWidth=1;CTX.stroke();
+    CTX.fillStyle=danger?"rgba(255,100,100,.28)":"rgba(100,160,255,.28)";
+    CTX.font="9px Nunito,sans-serif";CTX.textAlign="left";CTX.textBaseline="middle";
+    CTX.fillText(Math.round(maxD*f)+"m",cx+f*R+3,cy-3);
+  });
+
+  CTX.fillStyle="rgba(255,255,255,.18)";CTX.font="bold 9px Nunito,sans-serif";CTX.textAlign="center";
+  CTX.fillText("N",cx,cy-R+11);CTX.fillText("S",cx,cy+R-3);CTX.fillText("E",cx+R-5,cy+4);CTX.fillText("W",cx-R+5,cy+4);
+
+  const ar=Math.min(alertDist*scale,R);
+  CTX.beginPath();CTX.arc(cx,cy,ar,0,Math.PI*2);
+  CTX.strokeStyle=danger?"rgba(255,82,82,.6)":"rgba(255,210,50,.5)";
+  CTX.lineWidth=1.5;CTX.setLineDash([5,5]);CTX.stroke();CTX.setLineDash([]);
+
+  sweep=(sweep+0.012)%(Math.PI*2);
+  CTX.save();CTX.translate(cx,cy);CTX.rotate(sweep);
+  const sw=CTX.createLinearGradient(0,0,R,0);
+  sw.addColorStop(0,danger?"rgba(255,60,60,.25)":"rgba(50,220,130,.2)");sw.addColorStop(1,"rgba(0,0,0,0)");
+  CTX.beginPath();CTX.moveTo(0,0);CTX.arc(0,0,R,-.6,0);CTX.closePath();CTX.fillStyle=sw;CTX.fill();CTX.restore();
+
+  trains.forEach(t=>{
+    if(!t.lat||!t.lon)return;
+    const dLat=(t.lat-uLat)*111320,dLon=(t.lon-uLon)*(111320*Math.cos(uLat*Math.PI/180));
+    let px=cx+dLon*scale,py=cy-dLat*scale;
+    const d=Math.hypot(px-cx,py-cy);if(d>R-12){px=cx+(px-cx)/d*(R-12);py=cy+(py-cy)/d*(R-12);}
+    const col=LC[t.line]||"#888",isA=t.distanceToUser<=alertDist||t.eta<=30;
+    if(isA){const pr=11+Math.sin(Date.now()/300)*3;CTX.beginPath();CTX.arc(px,py,pr,0,Math.PI*2);CTX.fillStyle=col+"28";CTX.fill();}
+    if(t.bearing!=null){
+      const hb=(t.bearing-90)*Math.PI/180;
+      CTX.beginPath();CTX.moveTo(px,py);CTX.lineTo(px-Math.cos(hb)*17,py-Math.sin(hb)*17);CTX.strokeStyle=col+"88";CTX.lineWidth=1.8;CTX.stroke();
+      const ax=px+Math.cos(hb)*9,ay=py+Math.sin(hb)*9;
+      CTX.beginPath();CTX.moveTo(ax,ay);CTX.lineTo(ax-Math.cos(hb-.45)*6,ay-Math.sin(hb-.45)*6);CTX.lineTo(ax-Math.cos(hb+.45)*6,ay-Math.sin(hb+.45)*6);CTX.closePath();CTX.fillStyle=col+"cc";CTX.fill();
+    }
+    CTX.beginPath();CTX.arc(px,py,isA?10:7,0,Math.PI*2);CTX.fillStyle=col;CTX.fill();
+    CTX.strokeStyle="rgba(255,255,255,.85)";CTX.lineWidth=1.5;CTX.stroke();
+    CTX.fillStyle=col==="#FCCC0A"?"#000":"#fff";CTX.font=`bold ${isA?10:9}px Nunito,sans-serif`;CTX.textAlign="center";CTX.textBaseline="middle";CTX.fillText(t.line,px,py);
+  });
+
+  const p=4+Math.sin(Date.now()/500)*1.5;
+  CTX.beginPath();CTX.arc(cx,cy,p*2.2,0,Math.PI*2);CTX.fillStyle=danger?"rgba(255,80,80,.2)":"rgba(79,172,254,.2)";CTX.fill();
+  CTX.beginPath();CTX.arc(cx,cy,8,0,Math.PI*2);CTX.fillStyle=danger?"#ff5252":"#4facfe";CTX.fill();
+  CTX.strokeStyle="#fff";CTX.lineWidth=2;CTX.stroke();
+  CTX.fillStyle="#fff";CTX.font="bold 8px Nunito,sans-serif";CTX.textAlign="center";CTX.textBaseline="top";CTX.fillText("YOU",cx,cy+10);
+
+  requestAnimationFrame(radarDraw); // always schedules next frame
+}
+// Start RAF loop immediately — runs forever regardless of tab
+requestAnimationFrame(radarDraw);
+
+/* ═══════════════════════════════════════
+   SIM LOOP — updates LIVE every 100ms
+   Completely independent of the DOM
+═══════════════════════════════════════ */
+const alertedSet=new Set();
+function addLog(msg,type="info"){S.log.unshift({msg,type,time:new Date().toLocaleTimeString()});S.log=S.log.slice(0,50);}
+
+setInterval(()=>{
+  if(S.screen!=="app")return;
+  const uLat=(S.loc||NYC).lat,uLon=(S.loc||NYC).lon;
+  const trains=S.tracking&&S.liveMode&&S.trains.length>0&&!S.trains[0].simulated
+    ?S.trains:makeSim(uLat,uLon,Date.now());
+
+  LIVE.trains=trains;LIVE.uLat=uLat;LIVE.uLon=uLon;
+  LIVE.alertDist=S.alertDist;LIVE.danger=S.danger;
+
+  const alerted=trains.filter(t=>t.distanceToUser<=S.alertDist||t.eta<=S.alertTime);
+  const dn=alerted.length>0;
+  if(dn!==S.danger){S.danger=dn;S.alerts=alerted;patchBanner();patchStats();}
+  alerted.forEach(t=>{
+    const key=t.id+Math.floor(Date.now()/8000);
+    if(!alertedSet.has(key)){alertedSet.add(key);fireAlert(t);addLog(`🚨 Line ${t.line} — ${Math.round(t.distanceToUser)}m ETA ${t.eta}s ${hdg(t)}`,"danger");}
+  });
+  if(S.tab==="trains")patchTrains(trains);
+  patchStats();
+  // Update radar count label
+  const rc=$id("rcount");if(rc)rc.textContent=trains.length+" TRAINS";
+},100);
+
+/* ── Alerts ── */
+function fireAlert(t){
+  if(S.notifOK&&"Notification"in window)new Notification(`⚠️ Line ${t.line} — ${Math.round(t.distanceToUser)}m`,{body:`ETA ${t.eta}s · ${hdg(t)}`,tag:t.id,requireInteraction:true});
+  if("vibrate"in navigator)navigator.vibrate([200,80,200,80,500]);
+}
+
+/* ── GPS ── */
+let wid=null;
+function askLoc(){
+  S.locStatus="asking";patchLocBar();
+  if(!navigator.geolocation){S.locStatus="denied";patchLocBar();return;}
+  navigator.geolocation.getCurrentPosition(
+    p=>{S.loc={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy};S.locStatus="ok";patchLocBar();patchStats();},
+    ()=>{S.locStatus="denied";patchLocBar();},
+    {enableHighAccuracy:true,timeout:12000,maximumAge:0}
+  );
+}
+function watchGPS(){
+  if(!navigator.geolocation||wid)return;
+  wid=navigator.geolocation.watchPosition(
+    p=>{S.loc={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy};S.locStatus="ok";patchLocBar();patchStats();},
+    e=>addLog(e.message,"warn"),{enableHighAccuracy:true,maximumAge:2000,timeout:10000}
+  );
+}
+
+/* ── Tracking ── */
+let tickId=null;
+function startTracking(){
+  S.tracking=true;watchGPS();addLog("Tracking started","success");patchCTA();patchHdr();
+  if(S.liveMode){
+    const tick=async()=>{
+      S.fetching=true;patchHdr();
+      try{
+        const u=S.loc||NYC;
+        const MF=["https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-ace","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-bdfm","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-g","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-jz","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-nqrw","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-l","https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs-si"];
+        const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:`Fetch MTA NYC GTFS-RT feeds (public, no auth) and extract VehiclePosition entities.\nFeeds:\n${MF.join("\n")}\nReturn ONLY JSON array: {"id":"str","line":"str","lat":num,"lon":num,"bearing":num|null,"speed":num|null,"direction":"N"|"S"|null}\nOnly lat 40.4-41.0, lon -74.4 to -73.5.`}]})});
+        const data=await res.json();
+        const text=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+        const s=text.indexOf("["),e=text.lastIndexOf("]");
+        if(s>=0&&e>s){
+          const raw=JSON.parse(text.slice(s,e+1)).filter(t=>t.lat&&t.lon&&t.lat>40.4&&t.lat<41&&t.lon>-74.4&&t.lon<-73.5).map(t=>({...t,distanceToUser:hav(u.lat,u.lon,t.lat,t.lon),bearingFromUser:brng(u.lat,u.lon,t.lat,t.lon),get eta(){return Math.round(this.distanceToUser/Math.max(this.speed||12,1))},simulated:false}));
+          if(raw.length>0){S.trains=raw;S.lastFetch=new Date();addLog(`✅ Live: ${raw.length} trains`,"success");}
+          else{addLog("0 live — sim active","warn");S.liveMode=false;}
+        }
+      }catch{addLog("Live failed — sim","warn");S.liveMode=false;}
+      S.fetching=false;patchHdr();
+    };
+    tick();tickId=setInterval(tick,30000);
+  }
+}
+function stopTracking(){
+  if(wid){navigator.geolocation.clearWatch(wid);wid=null;}
+  if(tickId){clearInterval(tickId);tickId=null;}
+  S.tracking=false;S.danger=false;S.alerts=[];
+  addLog("Tracking stopped","warn");patchCTA();patchHdr();patchBanner();
+}
+
+/* ── DMS ── */
+let dmsId=null;
+function armDMS(){
+  S.dmsArmed=true;S.dmsCountdown=S.dmsInterval;S.dmsTriggered=false;
+  dmsId=setInterval(()=>{
+    S.dmsCountdown--;
+    if(S.dmsCountdown<=0){S.dmsTriggered=true;S.dmsCountdown=S.dmsInterval;if("vibrate"in navigator)navigator.vibrate([500,200,500,200,1000]);if(S.notifOK)new Notification("☠️ CHECK-IN OVERDUE",{body:"Are you OK?",requireInteraction:true});addLog("☠️ DMS fired","danger");}
+    // Patch DMS display directly — no re-render
+    const cnt=$id("dmscnt");if(cnt){cnt.textContent=S.dmsCountdown+"s";cnt.style.color=S.dmsCountdown<=10?"#ff5252":"#fff";}
+    const bar=$id("dmsbar");if(bar)bar.style.width=(S.dmsCountdown/S.dmsInterval*100)+"%";
+    const ov=$id("dmsov");if(ov)ov.style.display=S.dmsTriggered?"block":"none";
+  },1000);
+  renderTab();
+}
+function disarmDMS(){clearInterval(dmsId);dmsId=null;S.dmsArmed=false;S.dmsTriggered=false;renderTab();}
+function dmsCheckIn(){S.dmsCountdown=S.dmsInterval;S.dmsTriggered=false;const ov=$id("dmsov");if(ov)ov.style.display="none";addLog("✓ DMS check-in","success");}
+
+/* ═══════════════════════════════════════
+   TARGETED DOM PATCHES — never re-render
+═══════════════════════════════════════ */
+function patchHdr(){
+  const b=$id("hbadge");if(!b)return;
+  const live=S.liveMode&&S.trains[0]&&!S.trains[0].simulated;
+  b.textContent=S.fetching?"fetching…":live?"🔴 LIVE MTA":"⚡ SIM";
+  b.style.color=live?"#43e97b":"rgba(255,255,255,.35)";
+  b.style.background=live?"rgba(67,233,123,.12)":"rgba(255,255,255,.06)";
+  const st=$id("hstatus");if(st){st.textContent=S.tracking?(S.danger?"DANGER":"LIVE"):"IDLE";st.style.color=S.tracking?(S.danger?"#ff8080":"#43e97b"):"rgba(255,255,255,.25)";st.style.animation=S.tracking?"blink 2.5s infinite":"none";}
+  const sp=$id("hspin");if(sp)sp.style.display=S.fetching?"inline-block":"none";
+  const pd=$id("hpulse");if(pd)pd.style.display=S.tracking&&!S.fetching?"block":"none";
+}
+function patchLocBar(){
+  const b=$id("locbar");if(!b)return;
+  b.style.display=S.locStatus==="ok"?"none":"flex";
+  const m=$id("locmsg");if(m)m.textContent=S.locStatus==="asking"?"Requesting GPS…":S.locStatus==="denied"?"GPS denied — tap Retry":"Tap to share location";
+}
+function patchStats(){
+  const p=$id("spos");if(p)p.textContent=S.loc?S.loc.lat.toFixed(4)+"°":"NYC sim";
+  const a=$id("sacc");if(a)a.textContent=S.loc?`±${Math.round(S.loc.acc||0)}m`:"no GPS";
+  const c=$id("scnt");if(c){c.textContent=LIVE.trains.length;c.style.color=S.danger?"#ff7878":"#43e97b";}
+  const z=$id("szone");if(z)z.textContent=`${S.alerts.length} in ${S.alertDist}m zone`;
+}
+function patchBanner(){
+  const b=$id("dbanner");if(!b)return;
+  b.style.display=S.danger?"flex":"none";
+  const m=$id("dmsg");if(m)m.textContent=`${S.alerts.length} train${S.alerts.length!==1?"s":""} approaching`;
+}
+function patchCTA(){
+  const b=$id("cta");if(!b)return;
+  const acc=S.danger?"#ff5252":"#4facfe";
+  b.textContent=S.tracking?"⏹  Stop Tracking":"▶  Start Tracking";
+  b.style.background=S.tracking?(S.danger?"rgba(255,82,82,.15)":"rgba(255,255,255,.07)"):`linear-gradient(135deg,${acc},${S.danger?"#ffaaaa":"#00e0ff"})`;
+  b.style.color=S.tracking?(S.danger?"#ff8080":"rgba(255,255,255,.5)"):"#fff";
+  b.style.boxShadow=S.tracking?"none":`0 8px 24px ${acc}55`;
+  b.style.border=`1.5px solid ${S.tracking?(S.danger?"rgba(255,82,82,.35)":"rgba(79,172,254,.15)"):"transparent"}`;
+}
+function patchTrains(trains){
+  const el=$id("tlist");if(!el)return;
+  const border=S.danger?"rgba(255,82,82,.2)":"rgba(79,172,254,.15)";
+  if(!trains||!trains.length){el.innerHTML=`<div class="card" style="text-align:center;padding:36px 0;border:1px solid ${border}"><div style="font-size:36px;margin-bottom:10px">🚇</div><div style="color:var(--m);font-size:13px">Start tracking to see trains</div></div>`;return;}
+  el.innerHTML=[...trains].sort((a,b)=>a.distanceToUser-b.distanceToUser).map(t=>{
+    const col=LC[t.line]||"#888",isA=S.alerts.find(x=>x.id===t.id);
+    const pct=Math.min(100,Math.max(4,(1-t.distanceToUser/(S.alertDist*3))*100));
+    const dir=hdg(t),from=card(t.bearingFromUser);
+    return`<div class="train-row" style="background:${isA?col+"12":"var(--s)"};border:1.5px solid ${isA?col+"55":border}">
+      <div style="width:38px;height:38px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0;color:${col==="#FCCC0A"?"#000":"#fff"};box-shadow:${isA?`0 0 16px ${col}77`:"none"}">${t.line}</div>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px"><b style="font-size:13px">${Math.round(t.distanceToUser)}m</b><span style="font-size:11px;font-weight:700;color:${isA?"#ff8585":"rgba(255,255,255,.4)"}">ETA ${t.eta}s</span></div>
+        <div class="prog"><div class="pf" style="width:${pct}%;background:${isA?"#ff5252":col};transition:width .5s ease"></div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px">
+          ${dir?`<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;background:rgba(255,255,255,.07);color:${isA?"#ffaaaa":"rgba(255,255,255,.5)"}">${dir}</span>`:""}
+          ${from?`<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:50px;background:rgba(79,172,254,.1);color:rgba(79,172,254,.9)">${from} of you</span>`:""}
+          <span style="font-size:10px;color:var(--m)">${Math.round((t.speed||0)*3.6)}km/h · ${t.simulated?"sim":"live"}</span>
+        </div>
+      </div>
+      ${isA?`<span style="font-size:16px;animation:blink .6s infinite">⚠️</span>`:""}
+    </div>`;
+  }).join("");
+}
+
+/* ═══════════════════════════════════════
+   RENDER — only on screen/tab change
+═══════════════════════════════════════ */
+function render(){
+  const app=$id("app");app.innerHTML="";
+  if(S.screen==="legal"){renderLegal(app);return;}
+  renderApp(app);
+  patchHdr();patchLocBar();patchStats();patchBanner();patchCTA();
+  if(S.tab==="trains")patchTrains(LIVE.trains);
+  if(S.tab==="radar"){
+    const slot=$id("rslot");
+    if(slot){CVS.style.display="block";slot.appendChild(CVS);}
+  }else{CVS.style.display="none";}
+}
+
+/* ── Legal ── */
+function renderLegal(app){
+  const cls=[
+    ["1. ACCEPTANCE","By tapping \"I Agree & Continue\" you unconditionally agree to every provision herein. If you do not agree, do not use this application."],
+    ["2. INFORMATIONAL ONLY","Track Watch displays approximate subway train positions from public MTA GTFS-RT feeds. Data may be delayed, incomplete, or inaccurate. This app is NOT a safety device and CANNOT be relied upon to prevent injury or death."],
+    ["3. ASSUMPTION OF ALL RISK","You acknowledge that: (a) railway tracks, tunnels, and restricted infrastructure are EXTREMELY DANGEROUS and may cause serious injury or death; (b) trains approach silently with little warning; (c) this app guarantees nothing. You assume ALL risks including electrocution, being struck, falls, toxic exposure, and entrapment."],
+    ["4. TRESPASSING & ILLEGAL USE","Access to MTA subway infrastructure is prohibited by law (NY Penal Law § 140.05 and federal statutes). The developer EXPRESSLY PROHIBITS use of this app to facilitate any illegal activity. All criminal and civil liability for trespassing rests solely with the User."],
+    ["5. LIABILITY DISCLAIMER","TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE DEVELOPER SHALL NOT BE LIABLE FOR ANY DAMAGES WHATSOEVER — INCLUDING DEATH, INJURY, PROPERTY DAMAGE, OR CRIMINAL EXPOSURE — ARISING FROM USE OF THIS APPLICATION, UNDER ANY LEGAL THEORY."],
+    ["6. INDEMNIFICATION","You agree to indemnify and hold harmless the Developer from all claims, costs, and attorneys' fees arising from your use or misuse of the application."],
+    ["7. NO WARRANTY","Provided AS IS without warranty of any kind. All warranties are disclaimed."],
+    ["8. EMERGENCIES","This app has no emergency functionality. In any emergency dial 911 immediately."],
+    ["9. AGE","You confirm you are 18 or older. Use by minors is strictly prohibited."],
+    ["10. GOVERNING LAW","Governed by New York law. New York County courts have exclusive jurisdiction. This is the entire agreement."],
+  ];
+  app.innerHTML=`
+  <div style="min-height:100vh;display:flex;flex-direction:column;padding:0 0 32px;animation:fadeIn .3s ease">
+    <div style="padding:28px 22px 14px;text-align:center">
+      <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#ff5252,#ff8a65);display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 12px;box-shadow:0 8px 24px rgba(255,82,82,.3)">⚠️</div>
+      <div style="font-size:19px;font-weight:900;color:#fff;letter-spacing:-.3px">Terms of Use & Liability Waiver</div>
+      <div style="font-size:11px;color:var(--m);margin-top:5px">Scroll to the bottom then agree to continue</div>
+    </div>
+    <div id="tos">
+      <p style="font-weight:900;font-size:13px;color:#fff;margin-bottom:8px">TRACK WATCH — LIABILITY WAIVER</p>
+      <p style="color:rgba(255,120,120,.8);font-weight:700;margin-bottom:12px;font-size:11px">Effective: ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</p>
+      ${cls.map(([t,b])=>`<div style="margin-bottom:12px"><span style="font-weight:800;color:#fff">${t}. </span>${b}</div>`).join("")}
+      <div id="toshint" style="text-align:center;margin-top:8px;font-size:11px;color:rgba(255,255,255,.22);transition:opacity .4s">↓ Keep scrolling to continue</div>
+    </div>
+    <div style="padding:14px 18px 0">
+      <div id="tosrow" style="display:flex;align-items:flex-start;gap:13px;margin-bottom:12px;background:var(--s);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:13px 15px;opacity:.4;transition:opacity .3s,border-color .3s;cursor:default">
+        <div id="tosbox" style="width:24px;height:24px;border-radius:8px;border:2px solid rgba(255,255,255,.3);background:transparent;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .2s;font-size:14px"></div>
+        <div style="font-size:12px;color:rgba(255,255,255,.75);font-weight:600;line-height:1.6">I have read and understood the Terms. I am 18+. I accept sole responsibility for my safety and all consequences. I agree to use this lawfully only.</div>
+      </div>
+      <button id="tosbtn" class="btn" style="background:rgba(255,255,255,.07);color:rgba(255,255,255,.25);border:none;font-size:15px;font-weight:800;cursor:default;transition:all .3s">Read the full terms first</button>
+      <div style="text-align:center;font-size:10px;color:rgba(255,255,255,.16);margin-top:10px;line-height:1.6">By continuing you electronically sign this agreement.</div>
+    </div>
+  </div>`;
+
+  // Scroll — only mutates specific elements, never re-renders
+  $id("tos").addEventListener("scroll",function(){
+    if(this.scrollTop+this.clientHeight>=this.scrollHeight-30&&!S.tosScrolled){
+      S.tosScrolled=true;
+      $id("toshint").style.opacity="0";
+      const row=$id("tosrow");row.style.opacity="1";row.style.cursor="pointer";row.style.borderColor="rgba(255,255,255,.18)";
+    }
+  },{passive:true});
+
+  $id("tosrow").addEventListener("click",()=>{
+    if(!S.tosScrolled)return;
+    S.tosChecked=!S.tosChecked;
+    const box=$id("tosbox");box.style.background=S.tosChecked?"#43e97b":"transparent";box.style.borderColor=S.tosChecked?"#43e97b":"rgba(255,255,255,.3)";box.textContent=S.tosChecked?"✓":"";
+    $id("tosrow").style.borderColor=S.tosChecked?"rgba(67,233,123,.3)":"rgba(255,255,255,.18)";
+    const btn=$id("tosbtn");btn.style.background=S.tosChecked?"linear-gradient(135deg,#4facfe,#00e0ff)":"rgba(255,255,255,.07)";btn.style.color=S.tosChecked?"#fff":"rgba(255,255,255,.25)";btn.style.boxShadow=S.tosChecked?"0 8px 28px rgba(79,172,254,.4)":"none";btn.style.cursor=S.tosChecked?"pointer":"default";btn.textContent=S.tosChecked?"I Agree — Enter Track Watch":"Read the full terms first";
+  });
+
+  $id("tosbtn").addEventListener("click",()=>{
+    if(!S.tosChecked||!S.tosScrolled)return;
+    S.screen="app";render();askLoc();
+  });
+}
+
+/* ── App shell ── */
+function renderApp(app){
+  const acc=S.danger?"#ff5252":"#4facfe";
+  const brd=S.danger?"rgba(255,82,82,.2)":"rgba(79,172,254,.15)";
+  app.style.background=S.danger?"radial-gradient(ellipse at top,#180606,var(--bg) 55%)":"radial-gradient(ellipse at top,#0c1a30,var(--bg) 55%)";
+  const TABS=[{id:"radar",i:"📡",l:"Radar"},{id:"trains",i:"🚆",l:"Trains"},{id:"ai",i:"🤖",l:"AI Guide"},{id:"crew",i:"👥",l:"Crew"},{id:"notes",i:"📓",l:"Notes"},{id:"windows",i:"🌙",l:"Windows"},{id:"settings",i:"⚙️",l:"Settings"}];
+
+  app.innerHTML=`
+  <div style="padding:18px 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <div>
+      <div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">Track Watch</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:3px">
+        <span style="font-size:10px;color:var(--m)">nyc subway · urbex</span>
+        <span id="hbadge" style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:50px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.35)">⚡ SIM</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px">
+      <div id="hspin" class="spin" style="width:18px;height:18px;display:none"></div>
+      <div id="hpulse" style="display:none;position:relative;width:10px;height:10px">
+        <div style="width:10px;height:10px;border-radius:50%;background:#43e97b;position:absolute"></div>
+        <div style="width:10px;height:10px;border-radius:50%;background:#43e97b;position:absolute;animation:ring 1.8s ease-out infinite"></div>
+      </div>
+      <span id="hstatus" style="font-size:11px;font-weight:700;letter-spacing:.4px;color:rgba(255,255,255,.25)">IDLE</span>
+    </div>
+  </div>
+
+  <div id="locbar" style="display:none;margin:0 18px 10px;padding:10px 16px;border-radius:16px;background:rgba(79,172,254,.08);border:1px solid rgba(79,172,254,.22);align-items:center;justify-content:space-between;gap:10px">
+    <span id="locmsg" style="font-size:12px;color:#4facfe;font-weight:600">Requesting GPS…</span>
+    <button onclick="askLoc()" class="sm" style="background:rgba(79,172,254,.2);color:#4facfe;border:1px solid rgba(79,172,254,.3)">Retry</button>
+  </div>
+
+  <div id="dbanner" style="display:none;margin:0 18px 10px;padding:13px 18px;border-radius:20px;background:rgba(255,82,82,.08);border:1.5px solid rgba(255,82,82,.35);align-items:center;gap:12px;animation:dpulse 1.1s infinite">
+    <span style="font-size:24px">⚠️</span>
+    <div><div id="dmsg" style="font-weight:800;font-size:14px;color:#ff7878">Trains approaching</div><div style="font-size:11px;color:rgba(255,170,170,.5);margin-top:1px">Clear the tracks immediately</div></div>
+  </div>
+
+  <div style="display:flex;gap:8px;padding:0 18px 10px;flex-shrink:0">
+    <div class="card" style="flex:1;padding:12px 14px;border:1px solid ${brd}"><div class="lbl">Position</div><div id="spos" style="font-size:20px;font-weight:800;color:#64c8ff;line-height:1">NYC sim</div><div id="sacc" style="font-size:9px;color:var(--m);margin-top:3px">no GPS</div></div>
+    <div class="card" style="flex:1;padding:12px 14px;border:1px solid ${brd}"><div class="lbl">Trains nearby</div><div id="scnt" style="font-size:20px;font-weight:800;color:#43e97b;line-height:1">0</div><div id="szone" style="font-size:9px;color:var(--m);margin-top:3px">0 in zone</div></div>
+  </div>
+
+  <div id="tabs">
+    ${TABS.map(t=>`<button class="tab${S.tab===t.id?" act":""}" data-tab="${t.id}" style="${S.tab===t.id?`background:${acc};color:#fff`:""}">${t.i} ${t.l}</button>`).join("")}
+  </div>
+
+  <div id="content" style="padding:0 18px;flex:1;animation:up .22s ease;padding-bottom:80px"></div>
+
+  <div id="cta-wrap">
+    <button id="cta" class="btn" onclick="S.tracking?stopTracking():startTracking()" style="font-size:14px;font-weight:800">▶  Start Tracking</button>
+  </div>`;
+
+  app.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{
+    S.tab=btn.dataset.tab;
+    app.querySelectorAll(".tab").forEach(b=>{b.classList.toggle("act",b.dataset.tab===S.tab);b.style.background=b.dataset.tab===S.tab?acc:"";b.style.color=b.dataset.tab===S.tab?"#fff":"";});
+    renderTab();
+  }));
+
+  renderTab();
+}
+
+function renderTab(){
+  const c=$id("content");if(!c)return;
+  const acc=S.danger?"#ff5252":"#4facfe";
+  const brd=S.danger?"rgba(255,82,82,.2)":"rgba(79,172,254,.15)";
+  c.style.animation="none";void c.offsetHeight;c.style.animation="up .22s ease";
+
+  if(S.tab==="radar"){
+    c.innerHTML=`<div class="card" style="border:1px solid ${brd};padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span id="rcount" style="font-size:10px;font-weight:700;color:var(--m);letter-spacing:.5px">LIVE RADAR · 0 TRAINS</span>
+        <span style="font-size:9px;font-weight:700;color:${S.trains[0]?.simulated?"rgba(255,190,0,.5)":"rgba(100,255,150,.6)"}">SIM</span>
+      </div>
+      <div id="rslot" style="min-height:310px;display:flex;align-items:center;justify-content:center"></div>
+      <div style="display:flex;justify-content:center;gap:14px;margin-top:12px;flex-wrap:wrap">
+        <span style="font-size:10px;color:#64c8ff;font-weight:700">● You</span>
+        <span style="font-size:10px;color:${S.danger?"#ff5252":"#ffd700"};font-weight:700">⊙ Alert zone</span>
+        <span style="font-size:10px;color:rgba(200,220,255,.5);font-weight:700">→ Heading</span>
+      </div>
+      ${!S.loc?`<button onclick="askLoc()" class="btn" style="margin-top:12px;background:rgba(79,172,254,.1);color:#4facfe;border:1px solid rgba(79,172,254,.22);font-size:13px;font-weight:700">📍 Grant GPS for real distances</button>`:""}
+    </div>`;
+    CVS.style.display="block";
+    $id("rslot").appendChild(CVS);
+  }
+  else if(S.tab==="trains"){
+    CVS.style.display="none";
+    c.innerHTML=`<div id="tlist"></div>${S.log.length?`<div style="margin-top:8px"><div class="lbl">EVENT LOG</div><div class="card" style="max-height:140px;overflow-y:auto;padding:9px 13px;border:1px solid ${brd}">${S.log.map(e=>`<div style="display:flex;gap:9px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="font-size:9px;color:rgba(255,255,255,.2);flex-shrink:0">${e.time}</span><span style="font-size:11px;color:${e.type==="danger"?"#ff8080":e.type==="success"?"#43e97b":"rgba(255,255,255,.4)"}">${e.msg}</span></div>`).join("")}</div></div>`:""}`;
+    patchTrains(LIVE.trains);
+  }
+  else if(S.tab==="ai"){CVS.style.display="none";renderAI(c,brd);}
+  else if(S.tab==="crew"){CVS.style.display="none";renderCrew(c,brd);}
+  else if(S.tab==="notes"){CVS.style.display="none";renderNotes(c,brd);}
+  else if(S.tab==="windows"){CVS.style.display="none";renderWindows(c);}
+  else if(S.tab==="settings"){CVS.style.display="none";renderSettings(c,acc,brd);}
+}
+
+/* ── AI ── */
+function renderAI(c,brd){
+  const QUICK=["Plan route from my location to Times Square","Safest time to explore tonight?","Lines with longest gaps between trains?","Best gear for tunnel exploring?","How to spot a headlight from far?","Emergency exits on A/C/E line?"];
+  c.innerHTML=`
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    ${[S.loc?`📍 ${S.loc.lat.toFixed(3)},${S.loc.lon.toFixed(3)}`:"📍 NYC sim",`🚆 ${LIVE.trains.length} trains`,S.alerts.length>0?`⚠️ ${S.alerts.length} in zone`:"✅ Zone clear"].map(x=>`<div style="font-size:10px;font-weight:700;padding:4px 10px;border-radius:50px;background:rgba(255,255,255,.06);color:var(--m);border:1px solid rgba(255,255,255,.1)">${x}</div>`).join("")}
+  </div>
+  <div style="background:var(--s);border:1px solid ${brd};border-radius:20px;overflow:hidden;display:flex;flex-direction:column;margin-bottom:10px">
+    <div id="aimsgs" style="max-height:280px;overflow-y:auto;padding:13px 13px 7px;display:flex;flex-direction:column;gap:9px"></div>
+    <div style="padding:8px 10px 10px;border-top:1px solid rgba(255,255,255,.07);display:flex;gap:8px;align-items:flex-end">
+      <textarea id="aiinput" rows="1" placeholder="Ask anything — routes, safety, gear…" style="flex:1;min-height:38px;max-height:80px;border-radius:14px" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI($id('aiinput').value.trim())}"></textarea>
+      <button onclick="sendAI($id('aiinput').value.trim())" style="width:40px;height:40px;border-radius:50%;border:none;background:linear-gradient(135deg,#4facfe,#00e0ff);color:#fff;font-size:16px;cursor:pointer;flex-shrink:0;box-shadow:0 4px 12px rgba(79,172,254,.4)">↑</button>
+    </div>
+  </div>
+  <div class="lbl">QUICK QUESTIONS</div>
+  ${QUICK.map(q=>`<button onclick="sendAI('${q.replace(/'/g,"\\'")}');" style="display:block;text-align:left;padding:10px 14px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:rgba(255,255,255,.55);font-size:12px;font-family:'Nunito',sans-serif;cursor:pointer;font-weight:500;width:100%;margin-bottom:6px">${q}</button>`).join("")}`;
+  paintAI();
+}
+function paintAI(){
+  const el=$id("aimsgs");if(!el)return;
+  el.innerHTML=S.aiMsgs.map(m=>`<div style="display:flex;flex-direction:column;align-items:${m.role==="user"?"flex-end":"flex-start"}"><div style="max-width:88%;padding:10px 13px;border-radius:${m.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px"};background:${m.role==="user"?"linear-gradient(135deg,#4facfe,#00e0ff)":"rgba(255,255,255,.07)"};color:#fff;font-size:12.5px;line-height:1.65;font-weight:${m.role==="user"?600:500};${m.role==="assistant"?"border:1px solid rgba(255,255,255,.08)":""};white-space:pre-wrap;word-break:break-word">${m.content}</div><div style="font-size:9px;color:rgba(255,255,255,.2);margin-top:3px;padding:0 4px">${m.role==="assistant"?"🤖 AI Guide":"You"}</div></div>`).join("");
+  if(S.aiLoading)el.innerHTML+=`<div style="display:flex"><div style="padding:11px 15px;border-radius:18px 18px 18px 4px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08)"><div style="display:flex;gap:5px">${[0,1,2].map(i=>`<div style="width:7px;height:7px;border-radius:50%;background:rgba(79,172,254,.6);animation:blink 1.2s ${i*.2}s infinite"></div>`).join("")}</div></div></div>`;
+  el.scrollTop=el.scrollHeight;
+}
+async function sendAI(txt){
+  if(!txt||S.aiLoading)return;
+  const ta=$id("aiinput");if(ta){ta.value="";ta.style.height="auto";}
+  S.aiMsgs.push({role:"user",content:txt});S.aiLoading=true;paintAI();
+  const u=S.loc;
+  const ctx=`You are the AI inside Track Watch, an urbex subway proximity alert app for NYC.\nLocation: ${u?`${u.lat.toFixed(5)}, ${u.lon.toFixed(5)} (±${Math.round(u.acc||0)}m)`:"NYC sim"}\nAlert zone: ${S.alertDist}m | ${S.alerts.length>0?S.alerts.length+" trains in zone":"zone clear"}\nNearby: ${LIVE.trains.slice(0,6).map(t=>`Line ${t.line} ${Math.round(t.distanceToUser)}m ${hdg(t)} ETA ${t.eta}s`).join(", ")||"none"}\nYou know the NYC subway deeply. Be direct and practical.`;
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:ctx,messages:S.aiMsgs.map(m=>({role:m.role,content:m.content}))})});
+    const d=await res.json();
+    S.aiMsgs.push({role:"assistant",content:d.content?.filter(b=>b.type==="text").map(b=>b.text).join("")||"No response."});
+  }catch{S.aiMsgs.push({role:"assistant",content:"Connection error."});}
+  S.aiLoading=false;paintAI();
+}
+
+/* ── Crew ── */
+function renderCrew(c,brd){
+  const allOk=S.crew.length>0&&S.crew.every(m=>S.crewOk[m.id]);
+  c.innerHTML=`
+  <div class="card" style="border:1px solid ${S.dmsArmed?"rgba(255,82,82,.25)":brd};display:flex;flex-direction:column;gap:11px;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-size:13px;font-weight:800;color:${S.dmsArmed?"#ff7878":"#fff"}">☠️ Dead Man's Switch</div><div style="font-size:10px;color:var(--m);margin-top:2px">Fires alert if you miss a check-in</div></div>
+      <button id="dmsarm" class="sm" style="background:${S.dmsArmed?"rgba(255,82,82,.2)":"rgba(79,172,254,.15)"};color:${S.dmsArmed?"#ff7878":"#4facfe"};border:1px solid ${S.dmsArmed?"rgba(255,82,82,.35)":"rgba(79,172,254,.25)"};">${S.dmsArmed?"DISARM":"ARM"}</button>
+    </div>
+    ${S.dmsArmed?`
+    <div id="dmsov" style="display:${S.dmsTriggered?"block":"none"};padding:10px 14px;border-radius:14px;background:rgba(255,82,82,.15);border:1px solid rgba(255,82,82,.4);font-size:12px;font-weight:700;color:#ff8080;text-align:center;animation:rflash .6s infinite">🚨 CHECK-IN OVERDUE</div>
+    <div style="text-align:center">
+      <div id="dmscnt" style="font-size:38px;font-weight:900;color:#fff">${S.dmsCountdown}s</div>
+      <div style="font-size:10px;color:var(--m);margin-top:1px">until alert fires</div>
+      <div style="height:5px;border-radius:50px;background:rgba(255,255,255,.08);margin-top:8px;overflow:hidden"><div id="dmsbar" style="height:100%;border-radius:50px;background:#4facfe;width:${(S.dmsCountdown/S.dmsInterval)*100}%;transition:width 1s linear"></div></div>
+    </div>
+    <button onclick="dmsCheckIn()" class="btn" style="background:linear-gradient(135deg,#43e97b,#38f9d7);color:#07200f;border:none;font-size:14px;font-weight:800;box-shadow:0 6px 20px rgba(67,233,123,.35)">✓  I'M OK — CHECK IN</button>
+    <div>
+      <div class="lbl">INTERVAL</div>
+      <div style="display:flex;gap:6px">
+        ${[15,30,60,120].map(s=>`<button class="sm dmsint" data-s="${s}" style="flex:1;padding:7px 0;background:${S.dmsInterval===s?"rgba(79,172,254,.2)":"rgba(255,255,255,.06)"};color:${S.dmsInterval===s?"#4facfe":"rgba(255,255,255,.4)"};border:1px solid ${S.dmsInterval===s?"rgba(79,172,254,.3)":"rgba(255,255,255,.08)"}">${s}s</button>`).join("")}
+      </div>
+    </div>`:`<div style="font-size:11px;color:var(--m);line-height:1.6">Arm to set a check-in timer. Miss one and it fires vibration + notification. Essential for solo runs.</div>`}
+  </div>
+  <div class="card" style="border:1px solid ${brd};display:flex;flex-direction:column;gap:9px;margin-bottom:10px">
+    <div class="lbl">ADD CREW MEMBER</div>
+    <input id="cname" type="text" placeholder="Name">
+    <input id="cphone" type="tel" placeholder="Phone (optional)" style="margin-top:6px">
+    <button id="cadd" class="btn" style="background:linear-gradient(135deg,#4facfe,#00e0ff);color:#fff;border:none;font-size:13px;margin-top:4px">Add to Crew</button>
+  </div>
+  ${S.crew.length>0?`<div class="card" style="border:1px solid ${allOk?"rgba(67,233,123,.25)":brd}">
+    <div style="display:flex;justify-content:space-between;margin-bottom:11px"><div class="lbl" style="margin:0">CREW STATUS</div><div style="font-size:11px;font-weight:700;color:${allOk?"#43e97b":"#ffd700"}">${allOk?"✅ ALL SAFE":`${Object.values(S.crewOk).filter(Boolean).length}/${S.crew.length} in`}</div></div>
+    ${S.crew.map(m=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid ${S.crewOk[m.id]?"rgba(67,233,123,.25)":"rgba(255,255,255,.08)"};margin-bottom:7px">
+      <div style="width:32px;height:32px;border-radius:50%;background:${S.crewOk[m.id]?"rgba(67,233,123,.2)":"rgba(255,255,255,.08)"};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${S.crewOk[m.id]?"✅":"👤"}</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:${S.crewOk[m.id]?"#43e97b":"#fff"}">${m.name}</div>${m.phone?`<div style="font-size:10px;color:var(--m)">${m.phone}</div>`:""}</div>
+      <button class="sm csafe" data-id="${m.id}" style="background:${S.crewOk[m.id]?"rgba(255,82,82,.15)":"rgba(67,233,123,.15)"};color:${S.crewOk[m.id]?"#ff8080":"#43e97b"};border:1px solid ${S.crewOk[m.id]?"rgba(255,82,82,.3)":"rgba(67,233,123,.3)"}">${S.crewOk[m.id]?"UNCHECK":"SAFE"}</button>
+      <button class="cdel" data-id="${m.id}" style="background:none;border:none;color:rgba(255,255,255,.2);font-size:18px;cursor:pointer">×</button>
+    </div>`).join("")}
+  </div>`:""}`;
+
+  $id("dmsarm").addEventListener("click",()=>S.dmsArmed?disarmDMS():armDMS());
+  c.querySelectorAll(".dmsint").forEach(b=>b.addEventListener("click",()=>{S.dmsInterval=+b.dataset.s;S.dmsCountdown=+b.dataset.s;renderCrew(c,brd);}));
+  $id("cadd").addEventListener("click",()=>{const n=$id("cname").value.trim();if(!n)return;S.crew.push({id:Date.now(),name:n,phone:$id("cphone").value.trim()});renderCrew(c,brd);});
+  c.querySelectorAll(".csafe").forEach(b=>b.addEventListener("click",()=>{S.crewOk[b.dataset.id]=!S.crewOk[b.dataset.id];renderCrew(c,brd);}));
+  c.querySelectorAll(".cdel").forEach(b=>b.addEventListener("click",()=>{S.crew=S.crew.filter(x=>x.id!==+b.dataset.id);delete S.crewOk[b.dataset.id];renderCrew(c,brd);}));
+}
+
+/* ── Notes ── */
+const NTAGS={hazard:{i:"⚠️",col:"#ff8080"},safe:{i:"✅",col:"#43e97b"},info:{i:"📌",col:"#4facfe"},exit:{i:"🚪",col:"#ffd700"}};
+function renderNotes(c,brd){
+  c.innerHTML=`
+  <div class="card" style="border:1px solid ${brd};display:flex;flex-direction:column;gap:9px;margin-bottom:10px">
+    <div class="lbl">ADD NOTE</div>
+    <textarea id="ntxt" rows="3" placeholder="e.g. 3rd rail exposed near pillar 42…"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
+      <div style="display:flex;gap:6px;flex:1">${Object.entries(NTAGS).map(([k,v])=>`<button class="sm ntag" data-t="${k}" style="flex:1;padding:6px 0;font-size:14px;background:${S.noteTag===k?v.col+"22":"rgba(255,255,255,.05)"};color:${S.noteTag===k?v.col:"rgba(255,255,255,.35)"};border:1px solid ${S.noteTag===k?v.col+"44":"rgba(255,255,255,.08)"}">${v.i}</button>`).join("")}</div>
+      <button id="nsave" class="sm" style="background:linear-gradient(135deg,#4facfe,#00e0ff);color:#fff;border:none;padding:9px 18px;font-size:13px">Save</button>
+    </div>
+  </div>
+  ${S.notes.length===0?`<div class="card" style="text-align:center;padding:28px 0;border:1px solid rgba(255,255,255,.07)"><div style="font-size:28px;margin-bottom:8px">📓</div><div style="font-size:12px;color:var(--m)">No notes yet</div></div>`
+  :S.notes.map(n=>`<div style="border-radius:16px;padding:11px 14px;display:flex;gap:10px;background:var(--s);border:1px solid ${NTAGS[n.tag]?.col+"33"||brd};margin-bottom:7px">
+    <div style="font-size:20px;margin-top:1px;flex-shrink:0">${NTAGS[n.tag]?.i||"📌"}</div>
+    <div style="flex:1"><div style="font-size:12px;font-weight:600;color:#fff;line-height:1.5">${n.text}</div><div style="font-size:9px;color:rgba(255,255,255,.28);margin-top:4px">${n.time}</div></div>
+    <button class="ndel" data-id="${n.id}" style="background:none;border:none;color:rgba(255,255,255,.25);font-size:18px;cursor:pointer">×</button>
+  </div>`).join("")}`;
+  c.querySelectorAll(".ntag").forEach(b=>b.addEventListener("click",()=>{S.noteTag=b.dataset.t;renderNotes(c,brd);}));
+  $id("nsave").addEventListener("click",()=>{const txt=$id("ntxt").value.trim();if(!txt)return;S.notes.unshift({id:Date.now(),text:txt,tag:S.noteTag,time:new Date().toLocaleString()});S.notes=S.notes.slice(0,50);try{localStorage.setItem("tw_notes",JSON.stringify(S.notes));}catch{}renderNotes(c,brd);});
+  c.querySelectorAll(".ndel").forEach(b=>b.addEventListener("click",()=>{S.notes=S.notes.filter(x=>x.id!==+b.dataset.id);try{localStorage.setItem("tw_notes",JSON.stringify(S.notes));}catch{}renderNotes(c,brd);}));
+}
+
+/* ── Windows ── */
+function renderWindows(c){
+  const h=new Date().getHours(),isLow=h>=1&&h<5;
+  c.innerHTML=`
+  <div class="card" style="border:1px solid ${isLow?"rgba(67,233,123,.25)":"rgba(255,82,82,.25)"};background:${isLow?"rgba(67,233,123,.06)":"rgba(255,82,82,.06)"};margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:12px"><div style="font-size:26px">${isLow?"🌙":"🚇"}</div>
+    <div><div style="font-weight:800;font-size:14px;color:${isLow?"#43e97b":"#ff7878"}">${isLow?"Lower Activity Window":"Active Service Hours"}</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">${new Date().toLocaleTimeString()} · ${isLow?"1–5 AM: reduced frequency":"Full schedule running"}</div></div></div>
+  </div>
+  ${[{l:"All lines",w:"1:00–5:00 AM",low:isLow,d:"Reduced frequency, maintenance trains active"},{l:"1 2 3 4 5 6 7",w:"Late nights",low:h<22&&h>6,d:"Local only nights/weekends"},{l:"L",w:"1:30–5:30 AM",low:h>=2&&h<5,d:"Frequent overnight maintenance"},{l:"A / C / E",w:"Overnight",low:false,d:"A express overnight, C/E suspended"},{l:"N Q R W",w:"After midnight",low:h>22||h<6,d:"Reduced frequency"}].map(r=>`
+  <div class="card" style="border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:12px;margin-bottom:8px">
+    <div style="font-size:16px;flex-shrink:0">${r.low?"🟢":"🟡"}</div>
+    <div style="flex:1"><div style="font-size:12px;font-weight:700">${r.l}</div><div style="font-size:11px;color:var(--m);margin-top:2px">${r.d}</div></div>
+    <div style="font-size:10px;font-weight:700;color:var(--m);flex-shrink:0">${r.w}</div>
+  </div>`).join("")}
+  <div class="card" style="border:1px solid rgba(255,255,255,.06);text-align:center;font-size:11px;color:rgba(255,255,255,.3);line-height:1.7">⚠️ Maintenance trains run at any hour. Never rely on this for safety decisions.</div>`;
+}
+
+/* ── Settings ── */
+function renderSettings(c,acc,brd){
+  c.innerHTML=`
+  <div class="card" style="border:1px solid ${brd};margin-bottom:10px">
+    <div class="lbl">DATA SOURCE</div>
+    <div style="display:flex;gap:8px">
+      ${[["live","🔴 Live MTA"],["sim","⚡ Simulation"]].map(([m,l])=>`<button class="sm srcbtn" data-m="${m}" style="flex:1;padding:10px 0;background:${(S.liveMode===(m==="live"))?"rgba(79,172,254,.2)":"rgba(255,255,255,.06)"};color:${(S.liveMode===(m==="live"))?"#4facfe":"rgba(255,255,255,.4)"};border:1px solid ${(S.liveMode===(m==="live"))?"rgba(79,172,254,.3)":"rgba(255,255,255,.08)"}">${l}</button>`).join("")}
+    </div>
+    <p style="font-size:10px;color:var(--m);margin-top:10px;line-height:1.6">Live fetches real MTA feeds. No API key needed. Refreshes every 30s.</p>
+  </div>
+  <div class="card" style="border:1px solid ${brd};margin-bottom:10px">
+    <div class="lbl">ALERT DISTANCE</div>
+    <div style="display:flex;gap:7px">${[50,100,200,500].map(d=>`<button class="sm distbtn" data-d="${d}" style="flex:1;background:${S.alertDist===d?acc:"rgba(255,255,255,.06)"};color:${S.alertDist===d?"#fff":"rgba(255,255,255,.4)"};border:none;box-shadow:${S.alertDist===d?`0 3px 10px ${acc}44`:"none"}">${d}m</button>`).join("")}</div>
+  </div>
+  <div class="card" style="border:1px solid ${brd};margin-bottom:10px">
+    <div class="lbl">ALERT WHEN ETA ≤</div>
+    <div style="display:flex;gap:7px">${[15,30,60,120].map(t=>`<button class="sm etabtn" data-t="${t}" style="flex:1;background:${S.alertTime===t?acc:"rgba(255,255,255,.06)"};color:${S.alertTime===t?"#fff":"rgba(255,255,255,.4)"};border:none;box-shadow:${S.alertTime===t?`0 3px 10px ${acc}44`:"none"}">${t}s</button>`).join("")}</div>
+  </div>
+  <div class="card" style="border:1px solid ${brd};display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+    <div class="lbl">NOTIFICATIONS & GPS</div>
+    <button id="notifbtn" class="btn" style="background:${S.notifOK?"rgba(67,233,123,.1)":"rgba(255,255,255,.06)"};color:${S.notifOK?"#43e97b":"rgba(255,255,255,.5)"};border:1px solid ${S.notifOK?"rgba(67,233,123,.28)":brd};font-size:13px">${S.notifOK?"🔔  Notifications on":"🔕  Enable notifications"}</button>
+    <button onclick="askLoc()" class="btn" style="background:rgba(79,172,254,.08);color:#4facfe;border:1px solid rgba(79,172,254,.22);font-size:13px">📍 ${S.loc?`${S.loc.lat.toFixed(5)}, ${S.loc.lon.toFixed(5)}`:"Re-request GPS"}</button>
+  </div>
+  <div class="card" style="border:1px solid ${brd};margin-bottom:10px">
+    <div class="lbl">ALL TRACKED LINES</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${LINES.map(l=>`<div style="width:28px;height:28px;border-radius:50%;background:${LC[l]||"#555"};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:${LC[l]==="#FCCC0A"?"#000":"#fff"}">${l}</div>`).join("")}</div>
+  </div>
+  <div class="card" style="border:1px solid rgba(79,172,254,.15);background:rgba(79,172,254,.05);text-align:center;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:700;color:#4facfe;margin-bottom:6px">📲 Add to Home Screen</div>
+    <div style="font-size:11px;color:rgba(255,255,255,.5);line-height:1.7">Safari → Share → "Add to Home Screen"<br>Full GPS & notifications on iPhone</div>
+  </div>
+  <div class="card" style="border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);margin-bottom:10px">
+    <div class="lbl">LEGAL</div>
+    <button onclick="S.screen='legal';S.tosScrolled=false;render()" class="btn" style="background:rgba(255,255,255,.05);color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.07);font-size:12px">📋  View Terms of Use & Liability Waiver</button>
+  </div>
+  <div style="text-align:center;font-size:10px;color:rgba(255,255,255,.15);line-height:1.7;padding-bottom:8px">⚠️ For informational purposes only.<br>Trespassing on railway property is illegal.</div>`;
+
+  c.querySelectorAll(".srcbtn").forEach(b=>b.addEventListener("click",()=>{S.liveMode=b.dataset.m==="live";renderSettings(c,acc,brd);}));
+  c.querySelectorAll(".distbtn").forEach(b=>b.addEventListener("click",()=>{S.alertDist=+b.dataset.d;LIVE.alertDist=+b.dataset.d;renderSettings(c,acc,brd);}));
+  c.querySelectorAll(".etabtn").forEach(b=>b.addEventListener("click",()=>{S.alertTime=+b.dataset.t;renderSettings(c,acc,brd);}));
+  $id("notifbtn").addEventListener("click",async()=>{const p=await Notification.requestPermission();S.notifOK=p==="granted";addLog(p==="granted"?"Notifications on ✓":"Denied","success");renderSettings(c,acc,brd);});
+}
+
+/* ── Boot ── */
+render();
+</script>
+</body>
+</html>
